@@ -53,21 +53,15 @@ ask_overwrite() {
 if ask_overwrite "$BASE_DIR/Dockerfile"; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
-# -------------------------
-# Stage 1: build (Go + make) desde Quay.io
-# -------------------------
-FROM quay.io/toolbx-images/golang:1.22 AS builder
+FROM golang:1.22-alpine AS builder
 
-RUN apt-get update && apt-get install -y git make
+RUN apk add --no-cache git make
 
 WORKDIR /src
 RUN git clone https://github.com/ruvelro/toffu-docker.git .
 RUN make install
 
-# -------------------------
-# Stage 2: runtime mínimo (Alpine desde Quay)
-# -------------------------
-FROM quay.io/toolbx-images/alpine:latest
+FROM alpine:latest
 
 RUN apk add --no-cache \
       ca-certificates \
@@ -80,6 +74,7 @@ ENV TZ=Europe/Madrid
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY --from=builder /usr/local/bin/toffu /usr/local/bin/toffu
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
