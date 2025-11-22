@@ -30,7 +30,7 @@ fi
 if [ ! -f "$BASE_DIR/Dockerfile" ]; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
-FROM golang:1.22-alpine AS builder
+FROM golang:1.22.5-alpine3.20 AS builder
 
 RUN apk add --no-cache git make
 
