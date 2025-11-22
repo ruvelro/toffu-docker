@@ -54,9 +54,9 @@ if ask_overwrite "$BASE_DIR/Dockerfile"; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
 # -------------------------
-# Stage 1: build (Go + make) desde GitHub Container Registry
+# Stage 1: build (Go + make) desde Quay.io
 # -------------------------
-FROM ghcr.io/library/golang:1.22 AS builder
+FROM quay.io/toolbx-images/golang:1.22 AS builder
 
 RUN apt-get update && apt-get install -y git make
 
@@ -65,9 +65,9 @@ RUN git clone https://github.com/ruvelro/toffu-docker.git .
 RUN make install
 
 # -------------------------
-# Stage 2: runtime desde GHCR
+# Stage 2: runtime mínimo (Alpine desde Quay)
 # -------------------------
-FROM ghcr.io/library/alpine:latest
+FROM quay.io/toolbx-images/alpine:latest
 
 RUN apk add --no-cache \
       ca-certificates \
