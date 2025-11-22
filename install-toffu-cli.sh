@@ -107,7 +107,7 @@ fi
 # 4. Construir imagen
 echo
 echo "Construyendo imagen Docker: $IMAGE_NAME ..."
-docker build -t "$IMAGE_NAME" "$BASE_DIR"
+docker build --no-cache -t "$IMAGE_NAME" "$BASE_DIR"
 
 # 5. Crear credenciales si no existen
 CREDS_FILE="$BASE_DIR/toffu-credentials.json"
