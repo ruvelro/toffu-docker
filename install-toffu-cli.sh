@@ -10,10 +10,9 @@ echo "== Toffu Docker CLI =="
 echo "Directorio de trabajo: $BASE_DIR"
 echo
 
-# Asegurar ~/.local/bin existe
 mkdir -p "$LOCAL_BIN"
 
-# Asegurar que ~/.local/bin está en el PATH
+# Añadir ~/.local/bin al PATH si no está
 if ! echo "$PATH" | grep -q "$LOCAL_BIN" ; then
   echo "Añadiendo $LOCAL_BIN al PATH en ~/.bashrc ..."
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
@@ -26,27 +25,32 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-# 2. Crear Dockerfile si no existe
-if [ ! -f "$BASE_DIR/Dockerfile" ]; then
+ask_overwrite() {
+  FILE="$1"
+  if [ -f "$FILE" ]; then
+    echo "El archivo $FILE ya existe. ¿Quieres sobrescribirlo? (s/n) "
+    read -r ANSWER
+    if [ "$ANSWER" = "s" ] || [ "$ANSWER" = "S" ]; then
+      return 0   # Sobrescribir
+    else
+      return 1   # Conservar
+    fi
+  fi
+  return 0
+}
+
+# 2. Dockerfile
+if ask_overwrite "$BASE_DIR/Dockerfile"; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
-# -------------------------
-# Stage 1: build (Go + make)
-# -------------------------
 FROM golang:1.22-bookworm AS builder
 
 RUN apt-get update && apt-get install -y git make
 
 WORKDIR /src
-
 RUN git clone https://github.com/ruvelro/toffu-docker.git .
-
 RUN make install
 
-
-# -------------------------
-# Stage 2: runtime mínimo
-# -------------------------
 FROM alpine:latest
 
 RUN apk add --no-cache \
@@ -60,18 +64,18 @@ ENV TZ=Europe/Madrid
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY --from=builder /usr/local/bin/toffu /usr/local/bin/toffu
-
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /root
-
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
+else
+  echo "Conservando Dockerfile existente."
 fi
 
-# 3. Crear entrypoint.sh si no existe
-if [ ! -f "$BASE_DIR/entrypoint.sh" ]; then
+# 3. entrypoint.sh
+if ask_overwrite "$BASE_DIR/entrypoint.sh"; then
   echo "Creando entrypoint.sh..."
   cat > "$BASE_DIR/entrypoint.sh" <<"EOF"
 #!/bin/sh
@@ -113,17 +117,19 @@ exec toffu "$@"
 EOF
 
   chmod +x "$BASE_DIR/entrypoint.sh"
+else
+  echo "Conservando entrypoint.sh existente."
 fi
 
-# 4. Construir imagen
+# 4. Build con --no-cache para FORZAR reconstrucción completa
 echo
-echo "Construyendo imagen Docker: $IMAGE_NAME ..."
+echo "Construyendo imagen Docker (sin caché): $IMAGE_NAME ..."
 docker build --no-cache -t "$IMAGE_NAME" "$BASE_DIR"
 
-# 5. Crear credenciales si no existen
+# 5. Pedir credenciales
 CREDS_FILE="$BASE_DIR/toffu-credentials.json"
 
-if [ ! -f "$CREDS_FILE" ]; then
+if ask_overwrite "$CREDS_FILE"; then
   echo
   echo "Introduce tus credenciales de Woffu:"
   read -rp "Email de Woffu: " WOFFU_USERNAME
@@ -138,9 +144,11 @@ if [ ! -f "$CREDS_FILE" ]; then
 EOF
 
   echo "Creado $CREDS_FILE"
+else
+  echo "Conservando toffu-credentials.json existente."
 fi
 
-# 6. Crear wrapper en ~/.local/bin/toffu-docker
+# 6. Wrapper toffu-docker en ~/.local/bin/
 echo
 echo "Instalando wrapper en $WRAPPER_PATH ..."
 cat > "$WRAPPER_PATH" <<EOF
