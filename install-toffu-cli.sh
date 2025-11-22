@@ -12,34 +12,44 @@ echo
 
 mkdir -p "$LOCAL_BIN"
 
-# Añadir ~/.local/bin al PATH si no está
-if ! echo "$PATH" | grep -q "$LOCAL_BIN" ; then
-  echo "Añadiendo $LOCAL_BIN al PATH en ~/.bashrc ..."
+# Asegurar PATH
+if ! echo "$PATH" | grep -q "$LOCAL_BIN"; then
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# 1. Comprobar Docker
-if ! command -v docker >/dev/null 2>&1; then
-  echo "ERROR: Docker no está instalado o no está en el PATH."
-  exit 1
-fi
+# Detectar si hay TTY para decidir si preguntar o no
+has_tty() {
+  [ -t 0 ]
+}
 
 ask_overwrite() {
   FILE="$1"
-  if [ -f "$FILE" ]; then
-    echo "El archivo $FILE ya existe. ¿Quieres sobrescribirlo? (s/n) "
-    read -r ANSWER
-    if [ "$ANSWER" = "s" ] || [ "$ANSWER" = "S" ]; then
-      return 0   # Sobrescribir
-    else
-      return 1   # Conservar
-    fi
+
+  # No existe -> crear sin preguntar
+  if [ ! -f "$FILE" ]; then
+    return 0
   fi
-  return 0
+
+  # Si NO hay TTY (curl | bash) -> sobrescribir siempre
+  if ! has_tty; then
+    echo "Sobrescribiendo $FILE (ejecución no interactiva)."
+    return 0
+  fi
+
+  # Modo interactivo: pedir confirmación
+  echo -n "El archivo $FILE ya existe. ¿Quieres sobrescribirlo? (s/n) "
+  read -r ANSWER
+  if [ "$ANSWER" = "s" ] || [ "$ANSWER" = "S" ]; then
+    return 0
+  else
+    return 1
+  fi
 }
 
-# 2. Dockerfile
+# ---------------------------------------------------------
+# 1. Dockerfile
+# ---------------------------------------------------------
 if ask_overwrite "$BASE_DIR/Dockerfile"; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
@@ -74,7 +84,9 @@ else
   echo "Conservando Dockerfile existente."
 fi
 
-# 3. entrypoint.sh
+# ---------------------------------------------------------
+# 2. entrypoint.sh
+# ---------------------------------------------------------
 if ask_overwrite "$BASE_DIR/entrypoint.sh"; then
   echo "Creando entrypoint.sh..."
   cat > "$BASE_DIR/entrypoint.sh" <<"EOF"
@@ -85,33 +97,15 @@ CREDS_FILE="/work/toffu-credentials.json"
 TOKEN_DIR="/root/.toffu"
 TOKEN_FILE="$TOKEN_DIR/toffu.json"
 
-if [ ! -f "$CREDS_FILE" ]; then
-  echo "ERROR: No se encuentra $CREDS_FILE" >&2
-  exit 1
-fi
-
 USERNAME=$(jq -r '.username' "$CREDS_FILE")
 PASSWORD=$(jq -r '.password' "$CREDS_FILE")
 
-if [ -z "$USERNAME" ] || [ "$USERNAME" = "null" ] || \
-   [ -z "$PASSWORD" ] || [ "$PASSWORD" = "null" ]; then
-  echo "ERROR: username o password inválidos en $CREDS_FILE" >&2
-  exit 1
-fi
-
 mkdir -p "$TOKEN_DIR"
 
-echo ">> Obteniendo token de Woffu..."
-TOKEN=$(curl -s \
-   -d "grant_type=password&username=$USERNAME&password=$PASSWORD" \
-   https://app.woffu.com/token | jq -r '.access_token')
+TOKEN=$(curl -s -d "grant_type=password&username=$USERNAME&password=$PASSWORD" \
+  https://app.woffu.com/token | jq -r '.access_token')
 
-if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-  echo "ERROR: no se pudo obtener token de Woffu" >&2
-  exit 1
-fi
-
-printf '{\n  "debug": false,\n  "woffu_token": "%s"\n}\n' "$TOKEN" > "$TOKEN_FILE"
+printf '{ "debug": false, "woffu_token": "%s" }' "$TOKEN" > "$TOKEN_FILE"
 
 exec toffu "$@"
 EOF
@@ -121,12 +115,16 @@ else
   echo "Conservando entrypoint.sh existente."
 fi
 
-# 4. Build con --no-cache para FORZAR reconstrucción completa
+# ---------------------------------------------------------
+# 3. Build sin caché
+# ---------------------------------------------------------
 echo
 echo "Construyendo imagen Docker (sin caché): $IMAGE_NAME ..."
 docker build --no-cache -t "$IMAGE_NAME" "$BASE_DIR"
 
-# 5. Pedir credenciales
+# ---------------------------------------------------------
+# 4. Credenciales
+# ---------------------------------------------------------
 CREDS_FILE="$BASE_DIR/toffu-credentials.json"
 
 if ask_overwrite "$CREDS_FILE"; then
@@ -142,13 +140,11 @@ if ask_overwrite "$CREDS_FILE"; then
   "password": "$WOFFU_PASSWORD"
 }
 EOF
-
-  echo "Creado $CREDS_FILE"
-else
-  echo "Conservando toffu-credentials.json existente."
 fi
 
-# 6. Wrapper toffu-docker en ~/.local/bin/
+# ---------------------------------------------------------
+# 5. Wrapper (sin sudo)
+# ---------------------------------------------------------
 echo
 echo "Instalando wrapper en $WRAPPER_PATH ..."
 cat > "$WRAPPER_PATH" <<EOF
@@ -165,7 +161,7 @@ chmod +x "$WRAPPER_PATH"
 
 echo
 echo "Instalación completada."
-echo "Ejemplos de uso:"
+echo "Ejemplos:"
 echo "  toffu-docker status"
 echo "  toffu-docker in"
 echo "  toffu-docker out"
