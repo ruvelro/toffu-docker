@@ -30,14 +30,23 @@ fi
 if [ ! -f "$BASE_DIR/Dockerfile" ]; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
-FROM golang:1.22.5-alpine3.20 AS builder
+# -------------------------
+# Stage 1: build (Go + make)
+# -------------------------
+FROM golang:1.22-bookworm AS builder
 
-RUN apk add --no-cache git make
+RUN apt-get update && apt-get install -y git make
 
 WORKDIR /src
+
 RUN git clone https://github.com/ruvelro/toffu-docker.git .
+
 RUN make install
 
+
+# -------------------------
+# Stage 2: runtime mínimo
+# -------------------------
 FROM alpine:latest
 
 RUN apk add --no-cache \
@@ -51,10 +60,12 @@ ENV TZ=Europe/Madrid
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY --from=builder /usr/local/bin/toffu /usr/local/bin/toffu
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /root
+
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
 fi
