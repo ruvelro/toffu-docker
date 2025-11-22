@@ -53,7 +53,10 @@ ask_overwrite() {
 if ask_overwrite "$BASE_DIR/Dockerfile"; then
   echo "Creando Dockerfile..."
   cat > "$BASE_DIR/Dockerfile" <<"EOF"
-FROM golang:1.22-bookworm AS builder
+# -------------------------
+# Stage 1: build (Go + make) desde GitHub Container Registry
+# -------------------------
+FROM ghcr.io/library/golang:1.22 AS builder
 
 RUN apt-get update && apt-get install -y git make
 
@@ -61,7 +64,10 @@ WORKDIR /src
 RUN git clone https://github.com/ruvelro/toffu-docker.git .
 RUN make install
 
-FROM alpine:latest
+# -------------------------
+# Stage 2: runtime desde GHCR
+# -------------------------
+FROM ghcr.io/library/alpine:latest
 
 RUN apk add --no-cache \
       ca-certificates \
