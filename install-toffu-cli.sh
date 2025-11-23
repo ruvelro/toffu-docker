@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
+# -----------------------------------------------------
+# COLORES
+# -----------------------------------------------------
+GREEN="\033[1;32m"
+RED="\033[1;31m"
+BLUE="\033[1;34m"
+YELLOW="\033[1;33m"
+RESET="\033[0m"
+
 IMAGE_NAME="ruvelro/toffu-docker"
 BASE_DIR="$(pwd)"
 LOCAL_BIN="$HOME/.local/bin"
@@ -9,7 +18,7 @@ WRAPPER_PATH="$LOCAL_BIN/toffu-docker"
 USER="$1"
 PASS="$2"
 
-echo "== Toffu Docker CLI =="
+echo -e "${BLUE}== Toffu Docker CLI ==${RESET}"
 echo "Directorio de trabajo: $BASE_DIR"
 echo
 
@@ -20,26 +29,25 @@ if ! echo "$PATH" | grep -q "$LOCAL_BIN"; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# Detectar si hay TTY
 has_tty() {
   [ -t 0 ]
 }
 
-# ------------------------------------------
-# 1. Obtener credenciales
-# ------------------------------------------
+# -----------------------------------------------------
+# 1. CREDENCIALES
+# -----------------------------------------------------
 if [ -n "$USER" ] && [ -n "$PASS" ]; then
-  echo "Usando credenciales pasadas como parámetros."
+  echo -e "${GREEN}Usando credenciales pasadas como parámetros.${RESET}"
 else
   if has_tty; then
-    echo "No se han pasado credenciales. Introduce los datos manualmente:"
+    echo -e "${YELLOW}No se han pasado credenciales. Introduce los datos:${RESET}"
     read -rp "Email de Woffu: " USER
     read -rsp "Contraseña de Woffu: " PASS
     echo
   else
-    echo "ERROR: No se han pasado credenciales y no hay TTY para pedirlas."
-    echo "Ejemplo de uso automático:"
-    echo "  curl -s https://.../install.sh | bash -s -- user@correo.com password"
+    echo -e "${RED}ERROR: No se han pasado credenciales y no hay TTY.${RESET}"
+    echo "Ejemplo:"
+    echo "  curl -s https://.../install.sh | bash -s -- user pass"
     exit 1
   fi
 fi
@@ -53,12 +61,12 @@ cat > "$CREDS_FILE" <<EOF
 }
 EOF
 
-echo "Credenciales guardadas en $CREDS_FILE"
+echo -e "${GREEN}Credenciales guardadas en:$RESET $CREDS_FILE"
 echo
 
-# ------------------------------------------
-# 2. Crear Dockerfile (versión original)
-# ------------------------------------------
+# -----------------------------------------------------
+# 2. DOCKERFILE (versión original)
+# -----------------------------------------------------
 cat > "$BASE_DIR/Dockerfile" <<"EOF"
 FROM golang:1.22-alpine AS builder
 
@@ -88,9 +96,9 @@ WORKDIR /root
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
-# ------------------------------------------
-# 3. entrypoint.sh
-# ------------------------------------------
+# -----------------------------------------------------
+# 3. ENTRYPOINT
+# -----------------------------------------------------
 cat > "$BASE_DIR/entrypoint.sh" <<"EOF"
 #!/bin/sh
 set -e
@@ -116,20 +124,35 @@ EOF
 
 chmod +x "$BASE_DIR/entrypoint.sh"
 
-# ------------------------------------------
-# 4. Build sin caché
-# ------------------------------------------
-echo "Construyendo imagen Docker..."
+# -----------------------------------------------------
+# 4. BUILD
+# -----------------------------------------------------
+echo -e "${BLUE}Construyendo imagen Docker...${RESET}"
 docker build --no-cache -t "$IMAGE_NAME" "$BASE_DIR"
 
-# ------------------------------------------
-# 5. Wrapper
-# ------------------------------------------
-echo "Instalando wrapper en $WRAPPER_PATH..."
+# -----------------------------------------------------
+# 5. WRAPPER
+# -----------------------------------------------------
+echo -e "${BLUE}Instalando wrapper...${RESET}"
+
 cat > "$WRAPPER_PATH" <<EOF
 #!/bin/sh
 BASE_DIR="$BASE_DIR"
-IMAGE_NAME="$IMAGE_NAME"
+IMAGE_NAME="ruvelro/toffu-docker"
+
+case "\$1" in
+  login)
+    USER="\$2"
+    PASS="\$3"
+    if [ -z "\$USER" ] || [ -z "\$PASS" ]; then
+      echo "Uso: toffu-docker login usuario contraseña"
+      exit 1
+    fi
+    echo "{ \"username\": \"\$USER\", \"password\": \"\$PASS\" }" > "\$BASE_DIR/toffu-credentials.json"
+    echo "Credenciales actualizadas."
+    exit 0
+    ;;
+esac
 
 docker run --rm \
   -v "\$BASE_DIR:/work" \
@@ -138,10 +161,28 @@ EOF
 
 chmod +x "$WRAPPER_PATH"
 
+# -----------------------------------------------------
+# 6. MOSTRAR CREDENCIALES
+# -----------------------------------------------------
+echo -e "${BLUE}Credenciales generadas:${RESET}"
+cat "$CREDS_FILE"
 echo
-echo "Instalación completada."
+
+# -----------------------------------------------------
+# 7. PRUEBA DE CONEXIÓN
+# -----------------------------------------------------
+echo -e "${BLUE}Probando token...${RESET}"
+if "$WRAPPER_PATH" status >/dev/null 2>&1; then
+  echo -e "${GREEN}Token verificado correctamente ✔${RESET}"
+else
+  echo -e "${RED}ADVERTENCIA: No se pudo verificar el token.${RESET}"
+fi
+
 echo
-echo "Ejemplos:"
+echo -e "${GREEN}Instalación completada ✔${RESET}"
+echo
+echo "Comandos disponibles:"
 echo "  toffu-docker status"
 echo "  toffu-docker in"
 echo "  toffu-docker out"
+echo "  toffu-docker login usuario contraseña"
