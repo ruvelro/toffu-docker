@@ -13,7 +13,7 @@ RESET="\033[0m"
 echo -e "${BLUE}== Toffu Docker CLI Installer ==${RESET}"
 
 # ==============================================================================
-#  PARAMETROS
+#  PARÁMETROS
 # ==============================================================================
 USER="$1"
 PASS="$2"
@@ -36,7 +36,7 @@ mkdir -p "$LOCAL_BIN"
 
 # Añadir ~/.local/bin al PATH si no está
 if ! echo "$PATH" | grep -q "$LOCAL_BIN"; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
     export PATH="$HOME/.local/bin:$PATH"
     echo -e "${GREEN}Añadido ~/.local/bin al PATH.${RESET}"
 fi
@@ -80,13 +80,14 @@ echo -e "${GREEN}Credenciales guardadas: $CREDS_FILE${RESET}"
 echo
 
 # ==============================================================================
-#  2. CONFIGURACIÓN TELEGRAM
+#  2. CONFIGURACIÓN TELEGRAM + GENERAL
 # ==============================================================================
 echo -e "${BLUE}Generando archivo de configuración...${RESET}"
 
 cat > "$CONFIG_FILE" <<EOF
 TELEGRAM_TOKEN=${TG_TOKEN:-}
 TELEGRAM_CHAT_ID=${TG_CHAT:-}
+TELEGRAM_MODE=errors
 DAYS_RANGE=1-5
 PAUSED=0
 EOF
@@ -181,8 +182,12 @@ cat > "$WRAPPER_PATH" <<"EOF"
 #!/bin/sh
 
 # ============================================================================
-#  WRAPPER COMPLETO toffu-docker
-#  Incluye: DEBUG, TELEGRAM, LOGIN, SCHEDULE, UNINSTALL
+#  WRAPPER COMPLETO TOFFU-DOCKER (Versión Final)
+#  - DEBUG
+#  - NOTIFICACIONES TELEGRAM (errors | success | all)
+#  - LOGIN / TOKEN AUTO
+#  - SCHEDULE (add/del/list/pause/resume)
+#  - DESINSTALACIÓN COMPLETA
 # ============================================================================
 
 BASE_DIR="__BASE_DIR__"
@@ -203,6 +208,10 @@ RESET="\033[0m"
 
 DEBUG=0
 
+# ============================================================================
+#  UTILS
+# ============================================================================
+
 debug_echo() {
   if [ "$DEBUG" = "1" ]; then
     printf "${YELLOW}[DEBUG]${RESET} %s\n" "$1"
@@ -210,30 +219,52 @@ debug_echo() {
 }
 
 load_config() {
-  if [ -f "$CONFIG_FILE" ]; then
-    . "$CONFIG_FILE"
-  fi
+  [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
 }
 
 save_config() {
   {
     echo "TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}"
     echo "TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}"
+    echo "TELEGRAM_MODE=${TELEGRAM_MODE:-errors}"
     echo "DAYS_RANGE=${DAYS_RANGE:-1-5}"
     echo "PAUSED=${PAUSED:-0}"
   } > "$CONFIG_FILE"
 }
 
-send_telegram() {
+notify() {
   load_config
+
+  TYPE="$1"  # success | error
+  TEXT="$2"
+
   [ -z "$TELEGRAM_TOKEN" ] && return
   [ -z "$TELEGRAM_CHAT_ID" ] && return
 
-  MESSAGE="$1"
+  case "$TELEGRAM_MODE" in
+    errors)
+      [ "$TYPE" != "error" ] && return
+      ;;
+    success)
+      [ "$TYPE" != "success" ] && return
+      ;;
+    all)
+      ;;
+    *)
+      return
+      ;;
+  esac
 
   curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
     -d chat_id="$TELEGRAM_CHAT_ID" \
-    --data-urlencode "text=$MESSAGE" >/dev/null 2>&1 || true
+    --data-urlencode "text=$TEXT" >/dev/null 2>&1 || true
+}
+
+ensure_cron_available() {
+  if ! command -v crontab >/dev/null 2>&1; then
+    echo "Cron no está disponible en este sistema."
+    exit 1
+  fi
 }
 
 # ============================================================================
@@ -243,33 +274,27 @@ send_telegram() {
 run_toffu() {
   load_config
 
-  if [ "$DEBUG" = "1" ]; then
-    debug_echo "BASE_DIR=$BASE_DIR"
-    debug_echo "Docker command: docker run --rm -v $BASE_DIR:/work $IMAGE_NAME $*"
-  fi
+  debug_echo "Ejecutando: docker run --rm -v $BASE_DIR:/work $IMAGE_NAME $*"
 
   OUTPUT=$(docker run --rm -v "$BASE_DIR:/work" "$IMAGE_NAME" "$@" 2>&1)
   STATUS=$?
 
   printf "%s\n" "$OUTPUT"
 
-  if [ "$STATUS" -ne 0 ] && [ "$DEBUG" != "1" ]; then
-    send_telegram "⚠️ Error ejecutando toffu-docker $*\n\nSalida:\n$OUTPUT"
+  if [ "$DEBUG" != "1" ]; then
+    if [ $STATUS -eq 0 ]; then
+      notify "success" "✔ Fichaje correcto ($*)"
+    else
+      notify "error" "⚠️ Error en toffu-docker $*\n\n$OUTPUT"
+    fi
   fi
 
   return $STATUS
 }
 
 # ============================================================================
-#  CRONTAB / PROGRAMACIONES
+#  SCHEDULE (CRONTAB)
 # ============================================================================
-
-ensure_cron_available() {
-  if ! command -v crontab >/dev/null 2>&1; then
-    echo "No se puede usar cron en este sistema."
-    exit 1
-  fi
-}
 
 add_schedule() {
   TYPE="$1"
@@ -293,7 +318,7 @@ add_schedule() {
   crontab -l 2>/dev/null > "$TMP" || true
 
   if grep -q "$LABEL" "$TMP"; then
-    echo "Ya existe $TYPE a las $TIME"
+    echo "Ya existe una programación a las $TIME"
     rm -f "$TMP"
     exit 0
   fi
@@ -301,11 +326,10 @@ add_schedule() {
   DR="${DAYS_RANGE:-1-5}"
 
   echo "$MIN $HOUR * * $DR $WRAPPER_PATH $CMD # $LABEL" >> "$TMP"
-
   crontab "$TMP"
   rm -f "$TMP"
 
-  echo "Programado $TYPE a las $TIME."
+  echo "Programado $TYPE a las $TIME"
 }
 
 del_schedule() {
@@ -313,6 +337,7 @@ del_schedule() {
   TIME="$2"
 
   ensure_cron_available
+  load_config
 
   HOUR=${TIME%:*}
   MIN=${TIME#*:}
@@ -326,24 +351,23 @@ del_schedule() {
   LABEL="${TAG}_${HOUR}_${MIN}"
 
   TMP=$(mktemp)
-  crontab -l 2>/dev/null > "$TMP" || true
-  grep -v "$LABEL" "$TMP" > "${TMP}.new"
-  crontab "${TMP}.new"
-  rm -f "$TMP" "${TMP}.new"
+  crontab -l 2>/dev/null | grep -v "$LABEL" > "$TMP"
+  crontab "$TMP"
+  rm -f "$TMP"
 
   echo "Eliminado $TYPE a las $TIME"
 }
 
 list_schedules() {
   ensure_cron_available
-  crontab -l 2>/dev/null | grep "TOFFU_DOCKER_" || echo "No hay programaciones"
+  crontab -l 2>/dev/null | grep "TOFFU_DOCKER_" || echo "No hay programaciones activas."
 }
 
 pause_schedules() {
   ensure_cron_available
 
   TMP=$(mktemp)
-  crontab -l 2>/dev/null > "$TMP" || true
+  crontab -l 2>/dev>null > "$TMP" || true
   sed -e '/TOFFU_DOCKER_/ s/^[^#]/# &/' "$TMP" > "${TMP}.new"
   crontab "${TMP}.new"
 
@@ -374,7 +398,7 @@ resume_schedules() {
 }
 
 # ============================================================================
-#  MAIN SWITCH
+#  MAIN COMMANDS
 # ============================================================================
 
 case "$1" in
@@ -390,51 +414,68 @@ case "$1" in
     TELEGRAM_TOKEN="$2"
     TELEGRAM_CHAT_ID="$3"
     load_config
+    TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
+    TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"
     save_config
-    echo "Telegram actualizado."
+    echo "Telegram configurado."
+    ;;
+
+  telegram-mode)
+    MODE="$2"
+    case "$MODE" in
+      errors|success|all)
+        load_config
+        TELEGRAM_MODE="$MODE"
+        save_config
+        echo "Modo Telegram actualizado a: $MODE"
+        ;;
+      *)
+        echo "Modos permitidos: errors | success | all"
+        ;;
+    esac
     ;;
 
   uninstall)
-    echo "Desinstalando..."
+    echo "Desinstalando Toffu Docker CLI..."
+
     rm -f "$CREDS_FILE" "$CONFIG_FILE"
     rm -f "$BASE_DIR/Dockerfile" "$BASE_DIR/entrypoint.sh"
+
     docker rmi -f "$IMAGE_NAME" >/dev/null 2>&1 || true
 
     if command -v crontab >/dev/null 2>&1; then
       TMP=$(mktemp)
-      crontab -l 2>/dev/null | grep -v "TOFFU_DOCKER_" > "$TMP"
-      crontab "$TMP"
+      crontab -l 2>/dev/null | grep -v "TOFFU_DOCKER_" > "$TMP" || true
+      crontab "$TMP" || true
       rm -f "$TMP"
     fi
 
     rm -f "$WRAPPER_PATH"
 
-    echo "Completamente desinstalado."
+    echo "Eliminación completa."
     ;;
 
   schedule)
     SUB="$2"
     case "$SUB" in
       entrada)
-        ACTION="$3"
-        TIME="$4"
-        case "$ACTION" in
-          add) add_schedule entrada "$TIME" ;;
-          del) del_schedule entrada "$TIME" ;;
+        case "$3" in
+          add) del_schedule entrada "$4" 2>/dev/null || true; add_schedule entrada "$4" ;;
+          del) del_schedule entrada "$4" ;;
         esac
         ;;
       salida)
-        ACTION="$3"
-        TIME="$4"
-        case "$ACTION" in
-          add) add_schedule salida "$TIME" ;;
-          del) del_schedule salida "$TIME" ;;
+        case "$3" in
+          add) del_schedule salida "$4" 2>/dev/null || true; add_schedule salida "$4" ;;
+          del) del_schedule salida "$4" ;;
         esac
         ;;
       list) list_schedules ;;
       pause) pause_schedules ;;
       resume) resume_schedules ;;
-      *) echo "Uso: schedule entrada|salida add|del HH:MM" ;;
+      *)
+        echo "Uso: toffu-docker schedule entrada|salida add|del HH:MM"
+        ;;
     esac
     ;;
 
@@ -448,10 +489,9 @@ case "$1" in
     run_toffu "$@"
     ;;
 esac
-
 EOF
 
-# Reemplazar __BASE_DIR__
+# Reemplazar __BASE_DIR__ por el directorio real
 sed -i "s#__BASE_DIR__#$BASE_DIR#g" "$WRAPPER_PATH"
 chmod +x "$WRAPPER_PATH"
 
@@ -474,8 +514,9 @@ echo "Comandos útiles:"
 echo "  toffu-docker status"
 echo "  toffu-docker in"
 echo "  toffu-docker out"
-echo "  toffu-docker login user pass"
-echo "  toffu-docker telegram TOKEN CHAT_ID"
+echo "  toffu-docker login USER PASS"
+echo "  toffu-docker telegram BOT_TOKEN CHAT_ID"
+echo "  toffu-docker telegram-mode errors|success|all"
 echo "  toffu-docker schedule entrada add HH:MM"
 echo "  toffu-docker schedule salida add HH:MM"
 echo "  toffu-docker schedule list"
