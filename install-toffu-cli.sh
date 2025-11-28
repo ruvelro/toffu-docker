@@ -499,6 +499,27 @@ echo -e "${GREEN}Wrapper instalado: $WRAPPER_PATH${RESET}"
 echo
 
 # ==============================================================================
+#  7. PROGRAMACIONES POR DEFECTO
+# ==============================================================================
+
+echo -e "${BLUE}Creando programaciones por defecto...${RESET}"
+
+# Añadir entrada 09:00
+$WRAPPER_PATH schedule entrada add 09:00
+
+# Añadir salida 13:00
+$WRAPPER_PATH schedule salida add 13:00
+
+# Añadir entrada 14:30
+$WRAPPER_PATH schedule entrada add 14:30
+
+# Añadir salida 18:00
+$WRAPPER_PATH schedule salida add 18:00
+
+echo -e "${GREEN}Horario por defecto configurado (L-V: 09:00 / 13:00 / 14:30 / 18:00).${RESET}"
+echo
+
+# ==============================================================================
 #  MOSTRAR RESULTADOS
 # ==============================================================================
 echo -e "${BLUE}Credenciales Woffu:${RESET}"
