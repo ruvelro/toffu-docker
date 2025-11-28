@@ -295,7 +295,7 @@ run_toffu() {
     if [ $STATUS -eq 0 ]; then
       notify "success" "✔ Fichaje correcto ($*)"
     else
-      notify "error" "⚠️ Error ejecutando toffu-docker ($*)\n\n$OUTPUT"
+      notify "error" "⚠️ Error ejecutando toffu-docker ($*) $OUTPUT"
     fi
   fi
 
