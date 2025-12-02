@@ -60,14 +60,15 @@ Ejecuta el instalador (reemplaza los parámetros según corresponda):
 
 ```bash
 curl -s https://raw.githubusercontent.com/ruvelro/toffu-docker/main/install-toffu-cli.sh \
-| bash -s -- "correo@empresa.com" "PASSWORD123" "123456:ABC" "-1002313693703" "516"
+| bash -s -- "correo@empresa.com" "PASSWORD123" "123456:ABC" "-1001213141516" "136"
 ```
 
 Uso general:
 
-- Si pasas `EMAIL` y `PASSWORD` (obligatorios), el instalador cifrará y almacenará credenciales.
+- Si pasas `EMAIL` y `PASSWORD`, el instalador almacenará credenciales.
 - `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` y `TELEGRAM_THREAD_ID` son opcionales; si no se pasan, se pueden configurar después con el wrapper.
 - Si no pasas parámetros y ejecutas en TTY, el script pedirá interactivo `EMAIL` y `PASSWORD`.
+- `EMAIL` y `PASSWORD` se pueden generar, o actualizar, después.
 
 Parámetros:
 - `EMAIL` — Usuario de Woffu (obligatorio).
@@ -131,7 +132,7 @@ Ejemplo:
 toffu-docker telegram 123456:ABC -1002313693703 516
 ```
 
-- Puedes usar solo `TOKEN` + `CHAT_ID`, o añadir `THREAD_ID` para foros/temas.
+- Puedes usar solo `TOKEN` + `CHAT_ID`, o añadir `THREAD_ID` para canales, supergrupos o temas.
 - Para cambiar el modo de notificación usa:
 
 ```bash
@@ -147,7 +148,7 @@ Modos disponibles:
 
 ## Programación automática (cron)
 
-Permite programar múltiples horas de entrada y salida.
+Permite programar múltiples horas de entrada y salida. Programaciones por defecto: L/V (9:00/13:00/14:30/18:00)
 
 - Añadir una entrada:
 
