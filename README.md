@@ -60,7 +60,7 @@ Ejecuta el instalador (reemplaza los parámetros según corresponda):
 
 ```bash
 curl -s https://raw.githubusercontent.com/ruvelro/toffu-docker/main/install-toffu-cli.sh \
-| bash -s -- "correo@empresa.com" "PASSWORD123" "123456:ABC" "-1001213141516" "136"
+| bash -s -- EMAIL PASSWORD TELEGRAM_TOKEN TELEGRAM_CHAT_ID TELEGRAM_THREAD_ID
 ```
 
 Uso general:
@@ -77,6 +77,12 @@ Parámetros:
 - `TELEGRAM_CHAT_ID` — Chat o canal donde enviar avisos (opcional).
 - `TELEGRAM_THREAD_ID` — ID del hilo en grupos tipo foro (opcional).
 
+Ejemplo:
+
+```bash
+curl -s https://raw.githubusercontent.com/ruvelro/toffu-docker/main/install-toffu-cli.sh \
+| bash -s -- correo@empresa.com PASSWORD123 123456:ABC -1001213141516 136
+```
 ---
 
 ## Estructura generada
