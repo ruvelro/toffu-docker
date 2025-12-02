@@ -129,7 +129,7 @@ toffu-docker telegram TOKEN CHAT_ID THREAD_ID
 Ejemplo:
 
 ```bash
-toffu-docker telegram 123456:ABC -1002313693703 516
+toffu-docker telegram 123456:ABC -1001213141516 136
 ```
 
 - Puedes usar solo `TOKEN` + `CHAT_ID`, o añadir `THREAD_ID` para canales, supergrupos o temas.
